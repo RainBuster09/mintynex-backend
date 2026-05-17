@@ -5,7 +5,6 @@
   },
   "deploy": {
     "startCommand": "java -jar target/*.jar",
-    "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
