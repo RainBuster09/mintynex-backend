@@ -48,6 +48,8 @@ public class SecurityConfig {
             .sessionManagement(session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Health check endpoint (must be public for Railway healthchecks)
+                .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                 // Public auth endpoints
                 .requestMatchers(HttpMethod.POST,
                         "/api/auth/register",
