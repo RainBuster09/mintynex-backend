@@ -10,4 +10,5 @@ import org.springframework.stereotype.Repository;
 public interface BinderCardRepository extends JpaRepository<BinderCard, Long> {
     Page<BinderCard> findByUserIdOrderByAddedAtDesc(Long userId, Pageable pageable);
     long countByUserId(Long userId);
+    long countByUserIdAndGradeCompany(Long userId, String gradeCompany);
 }

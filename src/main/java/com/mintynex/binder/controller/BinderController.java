@@ -3,15 +3,20 @@ package com.mintynex.binder.controller;
 import com.mintynex.binder.model.BinderCard;
 import com.mintynex.binder.repository.BinderCardRepository;
 import com.mintynex.exception.NotFoundException;
+import com.mintynex.storage.SupabaseStorageService;
 import com.mintynex.users.model.User;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/binder")
@@ -19,8 +24,9 @@ import java.time.LocalDateTime;
 public class BinderController {
 
     private final BinderCardRepository binderCardRepository;
+    private final SupabaseStorageService storageService;
 
-    // GET /api/binder?page=0&size=18
+    // ── GET /api/binder?page=0&size=18 ───────────────────────
     @GetMapping
     public ResponseEntity<Page<CardResponse>> getBinder(
             @AuthenticationPrincipal User user,
@@ -33,7 +39,20 @@ public class BinderController {
                         .map(CardResponse::from));
     }
 
-    // POST /api/binder
+    // ── GET /api/binder/stats ─────────────────────────────────
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getStats(@AuthenticationPrincipal User user) {
+        long total    = binderCardRepository.countByUserId(user.getId());
+        long psaCount = binderCardRepository.countByUserIdAndGradeCompany(user.getId(), "PSA");
+        long bgsCount = binderCardRepository.countByUserIdAndGradeCompany(user.getId(), "BGS");
+        return ResponseEntity.ok(Map.of(
+                "total", total,
+                "psa",   psaCount,
+                "bgs",   bgsCount
+        ));
+    }
+
+    // ── POST /api/binder  (JSON) ──────────────────────────────
     @PostMapping
     public ResponseEntity<CardResponse> addCard(
             @AuthenticationPrincipal User user,
@@ -52,8 +71,47 @@ public class BinderController {
         return ResponseEntity.status(HttpStatus.CREATED).body(CardResponse.from(card));
     }
 
-    // DELETE /api/binder/{id}
+    // ── POST /api/binder/upload-image ─────────────────────────
+    // BUG FIX: Card image upload was missing
+    @PostMapping("/upload-image")
+    public ResponseEntity<Map<String, String>> uploadCardImage(
+            @AuthenticationPrincipal User user,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        if (file.isEmpty() || !file.getContentType().startsWith("image/"))
+            return ResponseEntity.badRequest().build();
+        if (file.getSize() > 10 * 1024 * 1024)
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        String filename = "cards/" + user.getId() + "/" +
+                SupabaseStorageService.uniqueFilename(file.getOriginalFilename());
+        String url = storageService.upload(file.getBytes(), "card-images", filename, file.getContentType());
+        return ResponseEntity.ok(Map.of("url", url));
+    }
+
+    // ── PUT /api/binder/{id} ──────────────────────────────────
+    @PutMapping("/{id}")
+    @Transactional
+    public ResponseEntity<CardResponse> updateCard(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
+            @RequestBody AddCardRequest req) {
+        BinderCard card = binderCardRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Card not found"));
+        if (!card.getUser().getId().equals(user.getId()))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        if (req.getCardName()     != null) card.setCardName(req.getCardName());
+        if (req.getCardType()     != null) card.setCardType(req.getCardType());
+        if (req.getCardSet()      != null) card.setCardSet(req.getCardSet());
+        if (req.getImageUrl()     != null) card.setImageUrl(req.getImageUrl());
+        if (req.getGrade()        != null) card.setGrade(req.getGrade());
+        if (req.getGradeCompany() != null) card.setGradeCompany(req.getGradeCompany());
+        if (req.getNotes()        != null) card.setNotes(req.getNotes());
+        binderCardRepository.save(card);
+        return ResponseEntity.ok(CardResponse.from(card));
+    }
+
+    // ── DELETE /api/binder/{id} ───────────────────────────────
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<Void> removeCard(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
@@ -65,7 +123,7 @@ public class BinderController {
         return ResponseEntity.noContent().build();
     }
 
-    // ── Inline DTOs ───────────────────────────────────────
+    // ── DTOs ─────────────────────────────────────────────────
 
     @Data
     public static class AddCardRequest {
@@ -92,15 +150,15 @@ public class BinderController {
 
         public static CardResponse from(BinderCard c) {
             CardResponse r = new CardResponse();
-            r.id = c.getId();
-            r.cardName = c.getCardName();
-            r.cardType = c.getCardType();
-            r.cardSet = c.getCardSet();
-            r.imageUrl = c.getImageUrl();
-            r.grade = c.getGrade();
+            r.id           = c.getId();
+            r.cardName     = c.getCardName();
+            r.cardType     = c.getCardType();
+            r.cardSet      = c.getCardSet();
+            r.imageUrl     = c.getImageUrl();
+            r.grade        = c.getGrade();
             r.gradeCompany = c.getGradeCompany();
-            r.notes = c.getNotes();
-            r.addedAt = c.getAddedAt();
+            r.notes        = c.getNotes();
+            r.addedAt      = c.getAddedAt();
             return r;
         }
     }

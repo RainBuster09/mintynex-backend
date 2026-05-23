@@ -55,7 +55,7 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
                 .displayName(req.getUsername())
                 .country(req.getCountry())
-                .active(false) // activated after OTP verification
+                .active(false)
                 .build();
         userRepository.save(user);
 
@@ -163,7 +163,6 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
         userRepository.save(user);
 
-        // Revoke all refresh tokens to force re-login on other devices
         refreshTokenRepository.deleteByUser(user);
 
         return AuthDto.MessageResponse.builder()
@@ -180,7 +179,9 @@ public class AuthService {
 
     // ── Private Helper ────────────────────────────────────────────────────────
     private AuthDto.AuthResponse buildAuthResponse(User user) {
-        userRepository.updateLastSeen(user.getId(), LocalDateTime.now());
+        // FIX: field is lastSeenAt (not lastSeen)
+        user.setLastSeenAt(LocalDateTime.now());
+        userRepository.save(user);
 
         String accessToken  = jwtUtils.generateAccessToken(user);
         String refreshToken = jwtUtils.generateRefreshToken(user);
