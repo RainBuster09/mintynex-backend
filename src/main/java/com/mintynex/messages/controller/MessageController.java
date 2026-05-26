@@ -151,6 +151,17 @@ public class MessageController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── DELETE /api/messages/conversation/{userId} ───────────
+    // Deletes all messages between me and the given user (both directions)
+    @DeleteMapping("/conversation/{userId}")
+    @Transactional
+    public ResponseEntity<Void> deleteConversation(
+            @AuthenticationPrincipal User me,
+            @PathVariable Long userId) {
+        messageRepository.deleteConversation(me.getId(), userId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ── PUT /api/messages/{userId}/read ──────────────────────
     @PutMapping("/{userId}/read")
     public ResponseEntity<Void> markRead(

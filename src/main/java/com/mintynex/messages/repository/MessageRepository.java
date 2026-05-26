@@ -36,6 +36,12 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findInboxForUser(@Param("me") Long me);
 
     @Modifying
+    @Query("DELETE FROM Message m WHERE " +
+           "(m.sender.id = :a AND m.receiver.id = :b) OR " +
+           "(m.sender.id = :b AND m.receiver.id = :a)")
+    void deleteConversation(@Param("a") Long userA, @Param("b") Long userB);
+
+    @Modifying
     @Query("UPDATE Message m SET m.read = true " +
            "WHERE m.sender.id = :senderId AND m.receiver.id = :receiverId AND m.read = false")
     void markAsRead(@Param("senderId") Long senderId, @Param("receiverId") Long receiverId);

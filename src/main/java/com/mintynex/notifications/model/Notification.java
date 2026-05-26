@@ -40,5 +40,6 @@ public class Notification {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    public enum Type { LIKE, COMMENT, TRADE, MESSAGE, SYSTEM }
+    // Added TRADE_OFFER and TRADE_ACCEPTED — keeping TRADE for backward compat
+    public enum Type { LIKE, COMMENT, TRADE, TRADE_OFFER, TRADE_ACCEPTED, MESSAGE, SYSTEM }
 }

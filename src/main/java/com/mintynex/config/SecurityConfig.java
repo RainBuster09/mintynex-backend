@@ -29,17 +29,17 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity          // enables @PreAuthorize on controllers
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
+    private final JwtAuthFilter          jwtAuthFilter;
     private final UserDetailsServiceImpl userDetailsService;
+    private final PremiumGateFilter      premiumGateFilter;
 
     @Value("${cors.allowed-origins}")
-    private String allowedOrigins;
+    private String allowedOriginsProperty;
 
-    // ── Security filter chain ────────────────────────────
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -48,7 +48,6 @@ public class SecurityConfig {
             .sessionManagement(session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public auth endpoints
                 .requestMatchers(HttpMethod.POST,
                         "/api/auth/register",
                         "/api/auth/login",
@@ -57,24 +56,37 @@ public class SecurityConfig {
                         "/api/auth/refresh",
                         "/api/auth/reset-password"
                 ).permitAll()
-                // Public read-only feed
                 .requestMatchers(HttpMethod.GET, "/api/posts").permitAll()
-                // Admin endpoints — require ADMIN role (checked via @PreAuthorize too)
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                // Everything else requires authentication
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            // FIX #29: premium gate runs after JWT auth so SecurityContext is populated
+            .addFilterAfter(premiumGateFilter, JwtAuthFilter.class);
 
         return http.build();
     }
 
-    // ── CORS ────────────────────────────────────────────
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        List<String> explicitOrigins = Arrays.asList(allowedOriginsProperty.split(","));
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+
+        // FIX #24: Support Vercel preview deploy URLs like
+        // https://mintynex-frontend-git-fix-xyz-user.vercel.app
+        // by using setAllowedOriginPatterns instead of setAllowedOrigins
+        // This lets us match *.vercel.app without opening up to all origins.
+        List<String> patterns = explicitOrigins.stream()
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toList());
+
+        // Also allow all Vercel preview URLs for this project
+        patterns.add("https://mintynex-frontend-*.vercel.app");
+        patterns.add("https://mintynex-*.vercel.app");
+
+        config.setAllowedOriginPatterns(patterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -85,7 +97,6 @@ public class SecurityConfig {
         return source;
     }
 
-    // ── Auth provider ────────────────────────────────────
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
